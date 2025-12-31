@@ -1,10 +1,14 @@
+from re import A
 import gradio as gr
 import asyncio
 import hashlib
 from uuid import UUID
 from langgraph_sdk import get_client
-
-API_URL = "http://127.0.0.1:2024"
+hostname = "http://langgraph-api-learn-2026-pre1231:2024"
+if hostname is None:
+    API_URL = "http://127.0.0.1:2024"
+else:
+    API_URL = hostname
 
 def name_to_uuid(name: str) -> str:
     """将普通字符串转为 0.5.39 版本强制要求的 UUID 格式"""
