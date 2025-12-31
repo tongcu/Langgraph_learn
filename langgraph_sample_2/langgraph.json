@@ -1,7 +1,7 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "my_agent": "./agent.py:graph"
+    "my_agent": "./agent.py:app"
   },
   "env": ".env"
 }

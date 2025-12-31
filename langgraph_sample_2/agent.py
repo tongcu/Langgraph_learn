@@ -12,6 +12,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from nodes.llm_nodes import call_model_dynamic
 #  State
 from tools.client_tool import tools
+from langgraph.graph.message import add_messages
 
 class State(TypedDict):
     messages: Annotated[list, add_messages]
