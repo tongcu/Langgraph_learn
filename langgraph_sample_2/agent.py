@@ -3,6 +3,7 @@ import sys
 # 注册当前目录，确保节点和工具能互相找到
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from typing import Annotated, TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
