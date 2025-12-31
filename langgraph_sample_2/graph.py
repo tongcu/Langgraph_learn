@@ -12,8 +12,9 @@ from nodes.llm_nodes import call_model_dynamic
 #  State
 from tools.client_tool import tools
 
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
+from nodes.states import MessageState as State
+# class State(TypedDict):
+#     messages: Annotated[list, add_messages]
 # 构建图的逻辑
 workflow = StateGraph(State)
 workflow.add_node("agent", call_model_dynamic)

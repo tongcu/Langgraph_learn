@@ -2,10 +2,10 @@ import logging
 # from typing import Optional, Dict, Any
 from langchain_openai import ChatOpenAI
 # from langchain_core.output_parsers import StrOutputParser
-from config import MODEL_CONFIGS
+from Config.model_config import MODEL_CONFIGS
 
 def get_llm(
-    model: str = "local_qwen",
+    model_name: str = "local_qwen",
     *,
     temp: float = None,
     stream: bool = True,
@@ -17,11 +17,11 @@ def get_llm(
         llm("deepseek")          → DeepSeek官方
         llm("local_qwen", 0.1)   → 小Qwen低温精确模式
     """
-    if model not in MODEL_CONFIGS:
-        raise ValueError(f"模型不存在: {model}\n可选: {list(MODEL_CONFIGS.keys())}")
+    if model_name not in MODEL_CONFIGS:
+        raise ValueError(f"模型不存在: {model_name}\n可选: {list(MODEL_CONFIGS.keys())}")
 
     # 1. 拿到原始配置并复制
-    cfg = MODEL_CONFIGS[model].copy()
+    cfg = MODEL_CONFIGS[model_name].copy()
 
     # 2. temp 优先级：显式传入 > 配置里默认值 > 0.7兜底
     final_temp = 0.7
@@ -38,7 +38,7 @@ def get_llm(
     cfg["temperature"] = final_temp
     cfg["streaming"] = stream
 
-    logging.info(f"LLM启动 → {model} | temp={final_temp} | stream={stream}")
+    logging.info(f"LLM启动 → {model_name} | temp={final_temp} | stream={stream}")
 
     return ChatOpenAI(
         base_url=cfg["base_url"],
