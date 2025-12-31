@@ -11,7 +11,7 @@ def call_model(state: State, config: RunnableConfig):
     # 2. 提取 model_name，并在后面设置【默认值】
     # 如果 config 里没写，它就会拿 "gpt-4o" 去调你的 get_llm()
     m_name = configurable.get("model_name", Default_model_name) 
-    
+    # import pdb; pdb.set_trace()
     # 3. 调用你仓库里的 get_llm
     llm = get_llm(model_name=m_name)
     
@@ -24,7 +24,7 @@ def call_model_dynamic(state, config: RunnableConfig):
     # 从 config 中动态获取模型名称
     configurable = config.get("configurable", {})
     m_name = configurable.get("model_name", Default_model_name)
-    
+    # import pdb; pdb.set_trace()
     # 获取 LLM 实例并绑定工具
     llm = get_llm(model_name=m_name)
     llm_with_tools = llm.bind_tools(tools)

@@ -19,7 +19,7 @@ def test_workflow():
         if event.get("messages"):
             last_msg = event["messages"][-1]
             print(f"当前节点响应: {last_msg.content or '[调用工具中...]'}")
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     # --- 第二步：检查中断状态 ---
     snapshot = app.get_state(config)
     if snapshot.next:
