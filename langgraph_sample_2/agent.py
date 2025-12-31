@@ -28,6 +28,6 @@ workflow.add_edge("tools", "agent")
 # 编译 app
 memory = MemorySaver()
 app = workflow.compile(
-    checkpointer=memory,
+    #checkpointer=memory,
     interrupt_before=["tools"]
 )
