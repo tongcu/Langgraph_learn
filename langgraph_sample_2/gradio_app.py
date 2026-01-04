@@ -1,4 +1,4 @@
-from re import A
+import re 
 import gradio as gr
 import asyncio
 import hashlib
@@ -36,6 +36,17 @@ def format_ai_response(text: str) -> str:
     
     return text
 
+
+async def ensure_thread_exists(client, thread_id):
+    """独立功能：确保线程存在，不存在则创建"""
+    try:
+        await client.threads.get(thread_id)
+    except Exception:
+        # 如果获取失败（404），则手动创建
+        # 2026-01-04T05:38:12.152238Z [warning  ] POST /threads/40b9ce26-4c12-cd34-5f55-a803f9cdcfae/runs/stream 404 2ms [langgraph_api.server] api_revision=212ad47 api_variant=local_dev langgraph_api_version=0.5.39 latency_ms=2 method=POST path=/threads/{thread_id}/runs/stream path_params={'thread_id': '40b9ce26-4c12-cd34-5f55-a803f9cdcfae'} proto=1.1 query_string= req_header={} request_id=dc850bd1-3dff-45da-9b50-e150b25509f3 res_header={} route=/threads/{thread_id}/runs/stream status=404 thread_name=MainThread
+        await client.threads.create(thread_id=thread_id)
+        print(f"DEBUG: Created new thread: {thread_id}")
+
 # --- 2. 核心预测逻辑 ---
 
 async def predict(message, history):
@@ -58,6 +69,7 @@ async def predict(message, history):
     full_response = ""
     
     try:
+        
         # 4. 调用远程流式接口
         # 使用 SDK 提供的 stream 方法
         async for event in client.runs.stream(

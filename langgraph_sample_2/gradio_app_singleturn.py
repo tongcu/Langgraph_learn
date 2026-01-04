@@ -1,4 +1,4 @@
-from re import A
+import re
 import gradio as gr
 import asyncio
 import hashlib
