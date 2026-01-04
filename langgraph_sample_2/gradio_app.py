@@ -47,6 +47,25 @@ async def ensure_thread_exists(client, thread_id):
         await client.threads.create(thread_id=thread_id)
         print(f"DEBUG: Created new thread: {thread_id}")
 
+
+def extract_content_from_event(data):
+    """
+    独立功能：从不同的数据结构中提取文本内容
+    """
+    content = ""
+    if isinstance(data, list):
+        # 如果是列表，通常包含多条消息或消息片段
+        for m in data:
+            if isinstance(m, dict) and "content" in m:
+                content += m["content"]
+            elif hasattr(m, "content"):
+                content += m.content
+    elif isinstance(data, dict):
+        content = data.get("content", "")
+    elif hasattr(data, "content"):
+        content = data.content
+    return content
+    
 # --- 2. 核心预测逻辑 ---
 
 async def predict(message, history):
@@ -66,8 +85,8 @@ async def predict(message, history):
         ]
     }
     
-    full_response = ""
-    
+    # full_response = ""
+    msg_cache = {}
     try:
         
         # 4. 调用远程流式接口
@@ -85,20 +104,30 @@ async def predict(message, history):
             # data 为消息片断
             data = event.data
             if isinstance(data, list):
-                # 某些模式下返回列表
-                for m in data:
-                    if "content" in m: full_response += m["content"]
-            elif isinstance(data, dict) and "content" in data:
-                full_response += data["content"]
-            elif hasattr(data, "content"):
-                full_response += data.content
+                # 取得列表中的最后一条 AI 消息
+                current_msg = data[-1]
+            else:
+                current_msg = data
 
-            # 实时格式化并返回给前端
-            yield format_ai_response(full_response)
+            # 获取该消息的唯一 ID (LangGraph 消息通常有 ID)
+            msg_id = getattr(current_msg, "id", "default_id")
+            
+            # 提取内容
+            content = extract_content_from_event(current_msg)
+            
+            # 如果是流式增量，或者是同一个 ID 的消息在更新，直接覆盖缓存而不是单纯 +=
+            # 这样无论 API 返回的是增量还是当前全量，展示都会保持正确
+            msg_cache[msg_id] = content
+            
+            # 拼接所有当前正在生成的消息片段（通常只有一个）
+            full_display = "".join(msg_cache.values())
+            
+            # 实时返回给前端
+            yield format_ai_response(full_display)
+            # --- 核心修复逻辑结束 ---
             
     except Exception as e:
-        yield f"❌ 连接 API 失败: {str(e)}\n请检查 API 地址 {API_URL} 是否正确且服务已启动。"
-
+        yield f"❌ 连接 API 失败: {str(e)}\n 请检查 API 地址 {API_URL} 是否正确。"
 # --- 3. UI 界面 ---
 
 def create_ui():
