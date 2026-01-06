@@ -4,15 +4,10 @@ from tools.client_tool import tools
 from .states import MessageState, WritingState
 Default_model_name = "local_qwen"
 
-def call_model_vanilla(state: MessageState, config: RunnableConfig):
+def call_model_vanilla(state, config: RunnableConfig):
     # 1. 提取 configurable 部分（如果不存在则返回空字典）
     configurable = config.get("configurable", {})
-    
-    # 2. 提取 model_name，并在后面设置【默认值】
-    # 如果 config 里没写，它就会拿 "gpt-4o" 去调你的 get_llm()
     m_name = configurable.get("model_name", Default_model_name) 
-    # import pdb; pdb.set_trace()
-    # 3. 调用你仓库里的 get_llm
     llm = get_llm(model_name=m_name)
     
     return {"messages": [llm.invoke(state["messages"])]} 

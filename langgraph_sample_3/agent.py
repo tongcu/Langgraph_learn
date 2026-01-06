@@ -7,6 +7,7 @@ from typing import Annotated, TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
+from nodes.states import WritingState as State
 
 # 导入你独立出来的功能
 from nodes.llm_nodes import call_model_vanilla, summary_agent_node
@@ -44,11 +45,11 @@ def custom_router(state: State):
 #     # 下次调用 app.invoke 时，State 会保留，从而实现“对话”
 #     return END
 
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
+# class State(TypedDict):
+#     messages: Annotated[list, add_messages]
 
 # 2. 定义一个起始路由器
-def start_router(state: State):
+def start_router(state):
     # 根据 state 里的标记决定去向
     return state.get("next_action", "summary_agent")
 

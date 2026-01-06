@@ -67,80 +67,79 @@ def extract_content_from_event(data):
     return content
     
 # --- 2. 核心预测逻辑 ---
-
-async def predict(message, history):
-    """
-    使用 SDK Client 连接远程服务
-    """
-    # 1. 初始化客户端
+async def predict(message, history, task_input, file_path):
     client = get_client(url=API_URL)
+    thread_id = get_thread_id()
     
-    # 2. 准备 Thread ID (UUID 格式)
-    thread_id = name_to_uuid("gradio_user_session")
-    
-    # 3. 构造输入消息 (LangGraph API 接收字典格式)
-    input_data = {
-        "messages": [
-            {"role": "user", "content": message}
-        ]
+    # 确保线程存在
+    await ensure_thread_exists(client, thread_id)
+
+    input_state = {
+        "task": task_input, # 满足你 state["task"] 的需求
+        "messages": [{"role": "user", "content": message}]
     }
     
-    # full_response = ""
     msg_cache = {}
     try:
-        
-        # 4. 调用远程流式接口
-        # 使用 SDK 提供的 stream 方法
         async for event in client.runs.stream(
             thread_id,
             GRAPH_ID,
-            input=input_data,
-            stream_mode="messages",
+            input=input_state,
+            stream_mode="values", # 实时同步 State
         ):
-            # 获取消息内容块
-            if event.event == "metadata": continue
+            if event.event == "metadata" or not event.data:
+                continue
             
-            # 处理消息流 (不同版本的 SDK 返回格式略有不同，通常 data 是消息对象)
-            # data 为消息片断
+            # 获取最新的消息列表
             data = event.data
-            if isinstance(data, list):
-                # 取得列表中的最后一条 AI 消息
-                current_msg = data[-1]
-            else:
-                current_msg = data
-
-            # 获取该消息的唯一 ID (LangGraph 消息通常有 ID)
-            msg_id = getattr(current_msg, "id", "default_id")
+            messages = data.get("messages", []) if isinstance(data, dict) else data
             
-            # 提取内容
+            if not messages:
+                continue
+                
+            current_msg = messages[-1]
+            msg_id = getattr(current_msg, "id", "default")
+            
+            # 使用独立提取函数
             content = extract_content_from_event(current_msg)
             
-            # 如果是流式增量，或者是同一个 ID 的消息在更新，直接覆盖缓存而不是单纯 +=
-            # 这样无论 API 返回的是增量还是当前全量，展示都会保持正确
+            # 更新缓存并输出
             msg_cache[msg_id] = content
-            
-            # 拼接所有当前正在生成的消息片段（通常只有一个）
             full_display = "".join(msg_cache.values())
             
-            # 实时返回给前端
-            yield format_ai_response(full_display)
-            # --- 核心修复逻辑结束 ---
+            yield full_display
             
     except Exception as e:
-        yield f"❌ 连接 API 失败: {str(e)}\n 请检查 API 地址 {API_URL} 是否正确。"
-# --- 3. UI 界面 ---
+        yield f"❌ 运行异常: {str(e)}"
 
 def create_ui():
-    # 移除引起报错的 theme 等不确定参数，使用最基础的配置
-    # 如果你想换肤，可以在 launch 之前定义主题变量
-    demo = gr.ChatInterface(
-        fn=predict,
-        title="LangGraph Client",
-        description=f"Connecting to {API_URL}",
-        examples=["帮我写个测试报告大纲"],
-    )
-    return demo
+    with gr.Blocks() as demo:
+        gr.Markdown("# LangGraph Agent 报告助手")
+        
+        with gr.Row():
+            with gr.Column():
+                # 增加会话 ID 字段，默认为你的 gradio_user_session
+                session_id = gr.Textbox(label="会话 ID (用于记忆)", value="gradio_user_session")
+                task_input = gr.Textbox(label="任务内容", lines=3)
+                file_upload = gr.File(label="上传附件")
+                submit_btn = gr.Button("发送请求")
+            
+            with gr.Column():
+                output_text = gr.Textbox(label="Agent 回复", lines=10)
+                uuid_display = gr.Label(label="当前 Thread UUID")
 
+        # 处理逻辑：先计算 UUID 展示给用户，再调用 API
+        def update_uuid(name):
+            return name_to_uuid(name)
+
+        session_id.change(update_uuid, inputs=[session_id], outputs=[uuid_display])
+
+        submit_btn.click(
+            fn=predict,
+            inputs=[task_input, file_upload, session_id],
+            outputs=[output_text]
+        )
+    return demo
 if __name__ == "__main__":
     # 启动 Gradio
     ui = create_ui()
