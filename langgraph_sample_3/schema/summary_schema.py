@@ -37,6 +37,11 @@ class GeneralReportSchema(BaseModel):
     key_takeaways: List[str] = Field(description="主要启示或关键结论")
     suggestions: List[str] = Field(description="针对性的对策或建议")
 
+class CodeSummary(BaseModel):
+    title: str = Field(description="代码标题")
+    tech_stack: List[str] = Field(description="核心技术栈(语言、数据库、中间件)")
+    logic_components: List[str] = Field(description="实现的主要功能")
+    deployment: str = Field(description="部署环境及依赖包")
 # # --- Tool 定义 ---
 # @tool
 # def science_summary_tool(data: ScienceSchema):

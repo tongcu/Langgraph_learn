@@ -67,79 +67,90 @@ def extract_content_from_event(data):
     return content
     
 # --- 2. 核心预测逻辑 ---
-async def predict(message, history, task_input, file_path):
+async def predict(message, history, task_context, session_id, file_obj):
+    """
+    message: 当前用户的具体提问 (来自 ChatInterface)
+    history: 自动维护的对话历史
+    task_context: 待分析的文章/背景内容 (来自独立的 Textbox)
+    """
     client = get_client(url=API_URL)
-    thread_id = get_thread_id()
+    thread_id = name_to_uuid(session_id)
     
     # 确保线程存在
-    await ensure_thread_exists(client, thread_id)
+    try:
+        await client.threads.get(thread_id)
+    except:
+        await client.threads.create(thread_id=thread_id)
 
+    # 核心修改：区分 task 和 messages
     input_state = {
-        "task": task_input, # 满足你 state["task"] 的需求
-        "messages": [{"role": "user", "content": message}]
+        "task": task_context,  # 这里放文章原文或背景
+        "messages": [{"role": "user", "content": message}] # 这里放当前用户的具体指令
     }
     
+    if file_obj is not None:
+        input_state["files"] = [file_obj.name]
+
     msg_cache = {}
     try:
         async for event in client.runs.stream(
             thread_id,
             GRAPH_ID,
             input=input_state,
-            stream_mode="values", # 实时同步 State
+            stream_mode="values", 
         ):
             if event.event == "metadata" or not event.data:
                 continue
             
-            # 获取最新的消息列表
             data = event.data
             messages = data.get("messages", []) if isinstance(data, dict) else data
             
-            if not messages:
-                continue
-                
+            if not messages: continue
+            
             current_msg = messages[-1]
             msg_id = getattr(current_msg, "id", "default")
+            if isinstance(current_msg, dict): msg_id = current_msg.get("id", "default")
             
-            # 使用独立提取函数
-            content = extract_content_from_event(current_msg)
+            # 提取内容 (兼容处理)
+            content = ""
+            if isinstance(current_msg, dict): content = current_msg.get("content", "")
+            else: content = getattr(current_msg, "content", "")
             
-            # 更新缓存并输出
             msg_cache[msg_id] = content
-            full_display = "".join(msg_cache.values())
+            full_raw_text = "".join(msg_cache.values())
             
-            yield full_display
+            yield format_ai_response(full_raw_text)
             
     except Exception as e:
         yield f"❌ 运行异常: {str(e)}"
 
 def create_ui():
-    with gr.Blocks() as demo:
-        gr.Markdown("# LangGraph Agent 报告助手")
+    with gr.Blocks(theme=gr.themes.Soft()) as demo:
+        gr.Markdown("# 📑 AI 深度报告分析助手")
         
         with gr.Row():
-            with gr.Column():
-                # 增加会话 ID 字段，默认为你的 gradio_user_session
-                session_id = gr.Textbox(label="会话 ID (用于记忆)", value="gradio_user_session")
-                task_input = gr.Textbox(label="任务内容", lines=3)
-                file_upload = gr.File(label="上传附件")
-                submit_btn = gr.Button("发送请求")
+            # 左侧配置区
+            with gr.Column(scale=1):
+                session_id = gr.Textbox(label="会话 ID", value="user_session_01")
+                file_upload = gr.File(label="上传参考文档")
+                # 这里的 task_context 对应你要求的 state["task"]
+                task_context = gr.Textbox(
+                    label="待分析的文章/背景内容", 
+                    placeholder="在此粘贴长篇文章、数据或背景资料...",
+                    lines=15
+                )
             
-            with gr.Column():
-                output_text = gr.Textbox(label="Agent 回复", lines=10)
-                uuid_display = gr.Label(label="当前 Thread UUID")
-
-        # 处理逻辑：先计算 UUID 展示给用户，再调用 API
-        def update_uuid(name):
-            return name_to_uuid(name)
-
-        session_id.change(update_uuid, inputs=[session_id], outputs=[uuid_display])
-
-        submit_btn.click(
-            fn=predict,
-            inputs=[task_input, file_upload, session_id],
-            outputs=[output_text]
-        )
+            # 右侧对话区
+            with gr.Column(scale=2):
+                # 使用 ChatInterface 可以自动处理 history 逻辑
+                chat = gr.ChatInterface(
+                    fn=predict,
+                    additional_inputs=[task_context, session_id, file_upload],
+                    #type="messages" # 使用新的 messages 格式
+                )
+                
     return demo
+
 if __name__ == "__main__":
     # 启动 Gradio
     ui = create_ui()

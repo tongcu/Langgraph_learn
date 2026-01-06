@@ -28,6 +28,12 @@ class ArchSpecSummary(BaseModel):
     logic_components: List[str] = Field(description="核心逻辑模块功能说明")
     deployment: str = Field(description="部署环境与拓扑结构")
 
+class CodeSummary(BaseModel):
+    title: str = Field(description="代码标题")
+    tech_stack: List[str] = Field(description="核心技术栈(语言、数据库、中间件)")
+    logic_components: List[str] = Field(description="实现的主要功能")
+    deployment: str = Field(description="部署环境及依赖包")
+
 # --- 2. 节点功能实现 ---
 
 async def summary_intent_focus_node(state: WritingState, config):

@@ -19,7 +19,7 @@ from langgraph.graph.message import add_messages
 
 def custom_router(state: State):
     last_message = state["messages"][-1]
-    
+    import pdb; pdb.set_trace()
     # 逻辑 1: 如果有工具调用，去 "tools"
     if last_message.tool_calls:
         return "tools"
@@ -83,11 +83,12 @@ workflow.add_conditional_edges(
 )
 
 workflow.add_edge("tools", "summary_agent")
-workflow.add_conditional_edges("call_model_vanilla", END)
+# workflow.add_conditional_edges("call_model_vanilla", END)
+workflow.add_edge("call_model_vanilla", END)
 
 # 编译 app
 memory = MemorySaver()
 app = workflow.compile(
     #checkpointer=memory,
-    interrupt_before=["tools"]
+    # interrupt_before=["tools"]
 )
