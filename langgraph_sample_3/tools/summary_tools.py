@@ -34,14 +34,14 @@ def summarize_general(data: GeneralReportSchema):
 @tool
 def summarize_code(data: CodeSummary):
     """用于代码片段和功能总结。"""
-    return {"category": "general", "result": data.dict()}
+    return {"category": "code", "result": data.dict()}
 
 
 # 工具列表，供 Agent 绑定
 summary_tools_ex1 = [
     summarize_science, 
-    summarize_architecture, 
-    summarize_prd, 
-    summarize_news, 
+    # summarize_architecture, 
+    # summarize_prd, 
+    # summarize_news, 
     summarize_general
 ]

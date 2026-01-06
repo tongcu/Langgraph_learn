@@ -7,6 +7,7 @@ Default_model_name = "local_qwen"
 
 def call_model_vanilla(state, config: RunnableConfig):
     # 1. 提取 configurable 部分（如果不存在则返回空字典）
+    logging.info("--- call_model_vanilla 正在决策总结策略 ---")
     configurable = config.get("configurable", {})
     m_name = configurable.get("model_name", Default_model_name) 
     llm = get_llm(model_name=m_name)
@@ -18,6 +19,7 @@ def call_model_vanilla(state, config: RunnableConfig):
 def call_model_tools(state, config: RunnableConfig):
     """动态获取 LLM 并支持工具调用"""
     # 从 config 中动态获取模型名称
+    logging.info("--- call_model_tools 正在决策总结策略 ---")
     configurable = config.get("configurable", {})
     m_name = configurable.get("model_name", Default_model_name)
     # import pdb; pdb.set_trace()
@@ -63,7 +65,7 @@ async def summary_agent_node(state: WritingState, config: RunnableConfig):
         {"role": "system", "content": system_message},
         {"role": "user", "content": state["task"]}
     ])
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # response
     # AIMessage(content='', additional_kwargs={}, response_metadata={'finish_reason': 'tool_calls', 'model_name': 'Qwen3-30B-A3B-Thinking-2507-AWQ-4bit', 'model_provider': 'openai'}, id='lc_run--019b9243-ec1b-7f93-ba5c-d4c06b6158ce', tool_calls=[{'name': 'summarize_general', 'args': {'data': '长江经济带十年来航运发展变化', 'summary': '过去十年，长江经济带依托长江黄金水道，实现了航运基础设施、智慧化升级与多式联运的全面突破。长江干线亿吨大港由11个增至18个，高等级航道达1.1万公里，5万吨级海轮可直达南京，万吨级船舶通达武汉，5000吨级船舶直达重庆。重庆果园港等枢纽港实现智慧化改造，场桥远控、铁水公联运无缝衔接，年吞吐量超2600万吨，成为西部出海新通道。三峡船闸通过技术创新，大修停航时间从100多天缩短至30天，提升通航效率。智慧海事系统与电子航道图广泛应用，实现多维感知、智能管控，事故险情下降70%。长江航运货物吞吐量突破42亿吨，稳居世界内河第一。航运成为推动产业梯度转移、区域协调发展和绿色低碳转型的关键支撑，助力长江经济带高质量发展。', 'key_takeaways': ['长江干线亿吨大港增加至18个，航道等级和通航能力显著提升', '重庆果园港实现智慧化升级，成为西部陆海新通道重要节点', '三峡船闸大修周期大幅缩短，通航效率显著提高', '智慧海事系统与电子航道图实现精细化、智能化管理', '长江航运吞吐量超42亿吨，为全球内河运输最繁忙航道'], 'suggestions': ['进一步推广长江电子航道图在智慧航运中的应用场景', '加强沿江港口与中欧班列、西部陆海新通道的协同联动', '深化长江航运绿色低碳转型，推广岸电、清洁能源船舶应用', '持续优化多式联运体制机制，降低综合物流成本']}, 'id': 'chatcmpl-tool-94d1274bcecc4a66b45891fd2b8f3d91', 'type': 'tool_call'}])
     

@@ -3,5 +3,6 @@
   "graphs": {
     "my_agent": "./agent.py:app"
   },
-  "env": ".env"
+  "env": ".env",
+  "concurrency_limit": 3
 }
