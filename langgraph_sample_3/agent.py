@@ -22,6 +22,10 @@ def custom_router(state: State):
     # import pdb; pdb.set_trace()
     # 逻辑 1: 如果有工具调用，去 "tools"
     if last_message.tool_calls:
+        # 在这里打印 LLM 生成的原始工具调用参数
+        for call in last_message.tool_calls:
+            print(f" LLM 尝试调用工具: {call['name']}")
+            print(f" 传入原始参数: \n {call['args']}")
         return "tools"
     
     # 逻辑 2: 如果没有工具调用，去 "refining_node" (而不是 END)

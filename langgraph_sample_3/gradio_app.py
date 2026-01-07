@@ -5,6 +5,7 @@ import hashlib
 from uuid import UUID
 from langgraph_sdk import get_client
 from langchain_core.messages import AIMessage, HumanMessage
+from graph.graph_manager import GraphManager, name_to_uuid # 引用独立功能
 
 
 hostname = "http://langgraph-api-learn-2026-pre1231:2024"
@@ -13,6 +14,10 @@ if hostname is None:
     API_URL = "http://127.0.0.1:2024"
 else:
     API_URL = hostname
+
+# 初始化管理器
+graphmanager = GraphManager(api_url=API_URL)
+
 
 GRAPH_ID = "my_agent"
 
@@ -99,19 +104,59 @@ async def get_thread_status(session_id):
     
 def extract_message_info(msg):
     """
-    独立功能：从不同格式的消息中提取角色、内容和工具调用。
-    支持 LangChain 对象和原始字典格式。
+    极致兼容版：从各种消息格式中提取角色、内容和工具调用。
+    支持：
+    1. LangChain 原始对象 (.type, .content)
+    2. LangGraph 序列化字典 (['type'], ['content'])
+    3. 标准 OpenAI 字典 (['role'], ['content'])
     """
+    if not msg:
+        return "", "", []
+
+    # 1. 提取角色 (Role/Type)
+    # 优先级：字典的 type > 字典的 role > 对象的 type属性
     if isinstance(msg, dict):
-        role = msg.get("role", "")
+        role = msg.get("type") or msg.get("role") or ""
         content = msg.get("content", "")
         tool_calls = msg.get("tool_calls", [])
+        
+        # 兼容性补丁：有些模型会把 tool_calls 塞在 additional_kwargs 里
+        if not tool_calls and "additional_kwargs" in msg:
+            tool_calls = msg["additional_kwargs"].get("tool_calls", [])
     else:
-        role = getattr(msg, "type", "")  # LangChain 对象通常用 type 标识
+        role = getattr(msg, "type", "")
         content = getattr(msg, "content", "")
         tool_calls = getattr(msg, "tool_calls", [])
-    
+
+    # 2. 修正：如果 content 为空字符串，但在 tool_calls 里有东西，
+    # 我们认为这也是一种有效的“回复”
     return role, content, tool_calls
+
+# 通用 工具内容读取
+def format_tool_args(args):
+    """动态格式化工具参数为易读的字符串"""
+    if not isinstance(args, dict):
+        return str(args)
+    
+    parts = []
+    for key, value in args.items():
+        # 将字段名翻译或格式化（例如 summary -> 摘要）
+        label = key.replace("_", " ").title() 
+        
+        if isinstance(value, list):
+            # 处理列表（如 key_takeaways）
+            item_str = "\n   · ".join([str(i) for i in value])
+            parts.append(f"🔹 **{label}**:\n   · {item_str}")
+        elif isinstance(value, dict):
+            # 处理嵌套字典
+            parts.append(f"🔹 **{label}**: {list(value.values())[0]}...")
+        else:
+            # 处理普通字符串
+            # 如果内容太长，可以做个截断展示
+            display_val = (str(value)[:100] + "...") if len(str(value)) > 100 else str(value)
+            parts.append(f"🔹 **{label}**: {display_val}")
+            
+    return "\n".join(parts)
 
 def get_tool_display_text(tool_calls):
     """
@@ -121,7 +166,7 @@ def get_tool_display_text(tool_calls):
         return ""
     
     mapping = {
-        "summarize_general": "📝 正在深度分析文章并生成总结...",
+        "summarize_general": "调用工具 summarize_general 正在深度分析文章并生成总结...",
         "web_search": "🔍 正在检索互联网实时信息...",
         # 在此添加更多工具名映射
     }
@@ -129,8 +174,17 @@ def get_tool_display_text(tool_calls):
     hints = []
     for tool in tool_calls:
         # 兼容不同结构的 tool_call
-        name = tool.get("name") if isinstance(tool, dict) else tool.get("function", {}).get("name", "")
-        hints.append(mapping.get(name, f"🛠️ 正在调用工具 [{name}] 处理中..."))
+        name = tool.get("name", "Unknown Tool")
+        args = tool.get("args", {})
+    
+        # 1. 获取基本提示语
+        base_hint = mapping.get(name, f"🛠️ 正在执行 {name}...")
+        # 2. 动态获取参数详情
+        detail_hint = format_tool_args(args)
+        
+        # 3. 组合
+        full_hint = f"{base_hint}\n\n{detail_hint[:100]}\n"
+        hints.append(full_hint)
     
     return "\n\n".join(hints)
 
@@ -163,43 +217,57 @@ async def predict(message, history, task_context, session_id, file_obj):
             thread_id,
             GRAPH_ID,
             input=input_state,
-            stream_mode="values", 
+            # 同时监听 values(状态全量) 和 updates(节点运行轨迹)
+            stream_mode=["values", "updates"],
             # config={
             #     "configurable": {},
             #     "recursion_limit": 50,    # 递归深度限制
             #     "concurrency_limit": 1    # 单个 Run 内部并行的分支数限制
             #     }
         ):
+            # print(f"DEBUG FRONTEND: 收到节点 {event.data} 的更新")
+            print(f"DEBUG FRONTEND: 收到event节点 {event.event} 的更新")
             if event.event == "metadata" or not event.data:
+                # import pdb; pdb.set_trace()
                 continue
             
+           
             data = event.data
+            # import pdb; pdb.set_trace()
             # stream_mode="values" 返回的是全量消息列表
             messages = data.get("messages", []) if isinstance(data, dict) else data
             if not messages:
                 continue
-            
+            # import pdb; pdb.set_trace()
             # 找到最后一条有效的 AI 消息
             # 注意：我们要从后往前找，因为最后一条可能是 ToolMessage 或 UserMessage
             for msg in reversed(messages):
                 role, content, tool_calls = extract_message_info(msg)
                 
-                # 情况 A：模型正在决定调用工具
-                if tool_calls:
-                    status_prefix = f"> {get_tool_display_text(tool_calls)}\n\n"
-                    yield status_prefix
-                    break # 找到最新的 tool_call 即可
-
-                # 情况 B：模型给出了正式回复 (assistant)
-                elif role in ["assistant", "ai"] and content:
-                    # 只有当内容真正更新时才 yield，避免 Gradio 界面抖动
-                    full_response = status_prefix + format_ai_response(content)
+                # --- 修改后的逻辑优先级 ---
+                # import pdb; pdb.set_trace()
+                # 1. 优先检查：如果是 AI 且有实质性内容，这是最终答案或阶段性答案
+                if role in ["assistant", "ai"] and content.strip():
+                    # 如果有 content，我们展示内容。
+                    # 如果同时有 tool_calls（某些模型会复现），我们也可以把 prefix 加上
+                    prefix = f"> {get_tool_display_text(tool_calls)}\n\n" if tool_calls else ""
+                    full_response = prefix + format_ai_response(content)
+                    
                     if full_response != last_yielded_content:
                         last_yielded_content = full_response
                         yield full_response
-                    break # 找到最新的有效回复即可
-                
-                # 情况 C：如果是用户消息，我们忽略它（不渲染在回答区），继续向上找
+                    break # 找到最新的文本回复，退出循环
+
+                # 2. 次要检查：如果没有 content 但有 tool_calls，说明正在调用工具途中
+                elif tool_calls:
+                    
+                    new_status = f"> {get_tool_display_text(tool_calls)}\n\n"
+                    if new_status != status_prefix:
+                        status_prefix = new_status
+                        yield status_prefix
+                    break 
+
+                # 3. 如果是 ToolMessage 或其他，继续向上找
                 else:
                     continue
                     
@@ -211,25 +279,46 @@ def create_ui():
         gr.Markdown("# 📑 AI 深度报告分析助手")
         
         with gr.Row():
-            # 左侧配置区
             with gr.Column(scale=1):
                 session_id = gr.Textbox(label="会话 ID", value="user_session_01")
-                file_upload = gr.File(label="上传参考文档")
-                # 这里的 task_context 对应你要求的 state["task"]
-                task_context = gr.Textbox(
-                    label="待分析的文章/背景内容", 
-                    placeholder="在此粘贴长篇文章、数据或背景资料...",
-                    lines=15
-                )
-            
-            # 右侧对话区
+                
+                # --- UI 中显示管理功能 ---
+                with gr.Accordion("🛠️ 线程高级管理", open=True):
+                    with gr.Row():
+                        monitor_btn = gr.Button("🔍 监控状态", size="sm")
+                        clear_this_btn = gr.Button("🗑️ 清理当前", size="sm")
+                    
+                    status_box = gr.Markdown("🟢 等待指令")
+                    
+                    with gr.Accordion("🚨 危险操作", open=False):
+                        clear_all_btn = gr.Button("🔥 清空全库线程", variant="stop")
+
+                file_upload = gr.File(label="参考文档")
+                task_context = gr.Textbox(label="分析背景", lines=10)
+
             with gr.Column(scale=2):
-                # 使用 ChatInterface 可以自动处理 history 逻辑
                 chat = gr.ChatInterface(
                     fn=predict,
                     additional_inputs=[task_context, session_id, file_upload],
-                    #type="messages" # 使用新的 messages 格式
                 )
+
+        # --- 绑定独立出来的功能 ---
+        monitor_btn.click(
+            fn=graphmanager.monitor_thread_state,
+            inputs=[session_id],
+            outputs=[status_box]
+        )
+        
+        clear_this_btn.click(
+            fn=graphmanager.clear_specific_thread,
+            inputs=[session_id],
+            outputs=[status_box]
+        )
+        
+        clear_all_btn.click(
+            fn=graphmanager.clear_all_threads,
+            outputs=[status_box]
+        )
                 
     return demo
 
