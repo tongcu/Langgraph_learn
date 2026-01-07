@@ -26,10 +26,21 @@ def summarize_news(data: NewsSchema):
     """用于新闻资讯、媒体快讯、时事评论、行业动态的总结。"""
     return {"category": "news", "result": data.dict()}
 
-@tool
-def summarize_general(data: GeneralReportSchema):
-    """用于普通商业报告、会议纪要、工作周报等非特定领域的文档总结。"""
-    return {"category": "general", "result": data.dict()}
+# @tool
+# def summarize_general(data: GeneralReportSchema):
+#     """用于普通商业报告、会议纪要、工作周报等非特定领域的文档总结。"""
+#     return {"category": "general", "result": data.dict()}
+
+@tool(args_schema=GeneralReportSchema)
+def summarize_general(subject: str, summary: str, key_takeaways: list, suggestions: list):
+    """用于普通商业报告总结。"""
+    # 将处理结果格式化为字符串返回给 LLM
+    result_text = f"报告主题：{subject}\n核心摘要：{summary}\n关键结论：{', '.join(key_takeaways)}"
+    
+    # 这里可以独立执行保存逻辑
+    # save_to_db(subject, summary) 
+    
+    return result_text # 这个 return 决定了 LLM 下一步能看到什么
 
 @tool
 def summarize_code(data: CodeSummary):
