@@ -164,11 +164,11 @@ async def predict(message, history, task_context, session_id, file_obj):
             GRAPH_ID,
             input=input_state,
             stream_mode="values", 
-            config={
-                "configurable": {},
-                "recursion_limit": 50,    # 递归深度限制
-                "concurrency_limit": 1    # 单个 Run 内部并行的分支数限制
-                }
+            # config={
+            #     "configurable": {},
+            #     "recursion_limit": 50,    # 递归深度限制
+            #     "concurrency_limit": 1    # 单个 Run 内部并行的分支数限制
+            #     }
         ):
             if event.event == "metadata" or not event.data:
                 continue
