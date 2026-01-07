@@ -6,7 +6,7 @@ from uuid import UUID
 from langgraph_sdk import get_client
 from langchain_core.messages import AIMessage, HumanMessage
 from graph.graph_manager import GraphManager, name_to_uuid # 引用独立功能
-
+from pages.format import format_tool_call_simple
 
 hostname = "http://langgraph-api-learn-2026-pre1231:2024"
 # GRAPH_ID = "my_agent"
@@ -133,60 +133,60 @@ def extract_message_info(msg):
     return role, content, tool_calls
 
 # 通用 工具内容读取
-def format_tool_args(args):
-    """动态格式化工具参数为易读的字符串"""
-    if not isinstance(args, dict):
-        return str(args)
+# def format_tool_args(args):
+#     """动态格式化工具参数为易读的字符串"""
+#     if not isinstance(args, dict):
+#         return str(args)
     
-    parts = []
-    for key, value in args.items():
-        # 将字段名翻译或格式化（例如 summary -> 摘要）
-        label = key.replace("_", " ").title() 
+#     parts = []
+#     for key, value in args.items():
+#         # 将字段名翻译或格式化（例如 summary -> 摘要）
+#         label = key.replace("_", " ").title() 
         
-        if isinstance(value, list):
-            # 处理列表（如 key_takeaways）
-            item_str = "\n   · ".join([str(i) for i in value])
-            parts.append(f"🔹 **{label}**:\n   · {item_str}")
-        elif isinstance(value, dict):
-            # 处理嵌套字典
-            parts.append(f"🔹 **{label}**: {list(value.values())[0]}...")
-        else:
-            # 处理普通字符串
-            # 如果内容太长，可以做个截断展示
-            display_val = (str(value)[:100] + "...") if len(str(value)) > 100 else str(value)
-            parts.append(f"🔹 **{label}**: {display_val}")
+#         if isinstance(value, list):
+#             # 处理列表（如 key_takeaways）
+#             item_str = "\n   · ".join([str(i) for i in value])
+#             parts.append(f"🔹 **{label}**:\n   · {item_str}")
+#         elif isinstance(value, dict):
+#             # 处理嵌套字典
+#             parts.append(f"🔹 **{label}**: {list(value.values())[0]}...")
+#         else:
+#             # 处理普通字符串
+#             # 如果内容太长，可以做个截断展示
+#             display_val = (str(value)[:100] + "...") if len(str(value)) > 100 else str(value)
+#             parts.append(f"🔹 **{label}**: {display_val}")
             
-    return "\n".join(parts)
+#     return "\n".join(parts)
 
-def get_tool_display_text(tool_calls):
-    """
-    独立功能：将技术性的 tool_calls 转换为用户友好的中文提示。
-    """
-    if not tool_calls:
-        return ""
+# def get_tool_display_text(tool_calls):
+#     """
+#     独立功能：将技术性的 tool_calls 转换为用户友好的中文提示。
+#     """
+#     if not tool_calls:
+#         return ""
     
-    mapping = {
-        "summarize_general": "调用工具 summarize_general 正在深度分析文章并生成总结...",
-        "web_search": "🔍 正在检索互联网实时信息...",
-        # 在此添加更多工具名映射
-    }
+#     mapping = {
+#         "summarize_general": "调用工具 summarize_general 正在深度分析文章并生成总结...",
+#         "web_search": "🔍 正在检索互联网实时信息...",
+#         # 在此添加更多工具名映射
+#     }
     
-    hints = []
-    for tool in tool_calls:
-        # 兼容不同结构的 tool_call
-        name = tool.get("name", "Unknown Tool")
-        args = tool.get("args", {})
+#     hints = []
+#     for tool in tool_calls:
+#         # 兼容不同结构的 tool_call
+#         name = tool.get("name", "Unknown Tool")
+#         args = tool.get("args", {})
     
-        # 1. 获取基本提示语
-        base_hint = mapping.get(name, f"🛠️ 正在执行 {name}...")
-        # 2. 动态获取参数详情
-        detail_hint = format_tool_args(args)
+#         # 1. 获取基本提示语
+#         base_hint = mapping.get(name, f"🛠️ 正在执行 {name}...")
+#         # 2. 动态获取参数详情
+#         detail_hint = format_tool_args(args)
         
-        # 3. 组合
-        full_hint = f"{base_hint}\n\n{detail_hint[:100]}\n"
-        hints.append(full_hint)
+#         # 3. 组合
+#         full_hint = f"{base_hint}\n\n{detail_hint[:100]}\n"
+#         hints.append(full_hint)
     
-    return "\n\n".join(hints)
+#     return "\n\n".join(hints)
 
 # --- 2. 重构后的核心预测逻辑 ---
 async def predict(message, history, task_context, session_id, file_obj):
@@ -239,37 +239,40 @@ async def predict(message, history, task_context, session_id, file_obj):
             if not messages:
                 continue
             # import pdb; pdb.set_trace()
-            # 找到最后一条有效的 AI 消息
-            # 注意：我们要从后往前找，因为最后一条可能是 ToolMessage 或 UserMessage
+
+            # --- 核心修改：累加所有 AI 相关的行为 ---
+            current_bubble_text = ""
+            
+            # 顺序遍历，把这次任务中产生的所有工具调用和回复拼接起来
+            # 注意：只拼接最后一次用户输入之后的 AI 消息
+            found_last_user = False
             for msg in reversed(messages):
                 role, content, tool_calls = extract_message_info(msg)
                 
-                # --- 修改后的逻辑优先级 ---
-                # import pdb; pdb.set_trace()
-                # 1. 优先检查：如果是 AI 且有实质性内容，这是最终答案或阶段性答案
-                if role in ["assistant", "ai"] and content.strip():
-                    # 如果有 content，我们展示内容。
-                    # 如果同时有 tool_calls（某些模型会复现），我们也可以把 prefix 加上
-                    prefix = f"> {get_tool_display_text(tool_calls)}\n\n" if tool_calls else ""
-                    full_response = prefix + format_ai_response(content)
+                # 如果碰到用户刚才的消息，说明往前的 AI 消息是上一轮的，停止拼接
+                if role == "human" or role == "user":
+                    break
+                
+                # 处理 AI 消息
+                if role in ["assistant", "ai"]:
+                    # 1. 如果有工具调用，先拼上工具提示
+                    if tool_calls:
+                        for call in tool_calls:
+                            # 调用上面定义的简单格式化函数
+                            tool_text = format_tool_call_simple(call['name'], call['args'])
+                            # 拼接到整体输出的前面
+                            if tool_text not in current_bubble_text:
+                                current_bubble_text = tool_text + "\n" + current_bubble_text
                     
-                    if full_response != last_yielded_content:
-                        last_yielded_content = full_response
-                        yield full_response
-                    break # 找到最新的文本回复，退出循环
-
-                # 2. 次要检查：如果没有 content 但有 tool_calls，说明正在调用工具途中
-                elif tool_calls:
-                    
-                    new_status = f"> {get_tool_display_text(tool_calls)}\n\n"
-                    if new_status != status_prefix:
-                        status_prefix = new_status
-                        yield status_prefix
-                    break 
-
-                # 3. 如果是 ToolMessage 或其他，继续向上找
-                else:
-                    continue
+                    # 2. 如果有内容回复，拼上内容
+                    if content and content.strip():
+                        current_bubble_text += format_ai_response(content)
+            
+            # 只有内容发生变化才 yield
+            if current_bubble_text and current_bubble_text != last_yielded_content:
+                print(f"DEBUG FRONTEND: role:{role} current_bubble_text\n: ** {current_bubble_text} 的更新")
+                last_yielded_content = current_bubble_text
+                yield current_bubble_text
                     
     except Exception as e:
         yield f"❌ 运行异常: {str(e)}"
