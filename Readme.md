@@ -24,8 +24,41 @@
 
 * **Graph 编排**：统一的构建文件，负责串联节点并设置 Checkpointer（持久化层）。
 
+## 启动命令
+```shell
+langgraph dev --host 0.0.0.0
+
+gradio gradio_app.py
+```
+## Sample
+
+### Sample 1 
+
 ### Sample 2 
 测试对话和工具调用功能。
 
 
 ### Sample 3
+测试对话及工具调用，完成基础功能。修改页面。
+#### 项目文件夹结构
+
+| 路径 | 职责描述 | 核心逻辑 |
+| :--- | :--- | :--- |
+| `agent.py`| **项目总入口** | 定义 LangGraph 状态机、节点循环及条件路由逻辑 |
+| `gradio_app.py` | **UI 界面入口** | 负责前端交互、流式输出渲染及 Gradio 布局定义 |
+| **`schema/`** | **数据契约层** | 独立存储所有结构化输出的 Pydantic 模型 |
+| └── `summary_schema.py` | - | 定义 `GeneralReportSchema` 等，约束 AI 提取字段 |
+| **`tools/`** | **工具实现层** | 独立存储 AI 可以调用的原子化函数 |
+| └── `summary_tools.py` | - | 包含 `@tool` 装饰的总结函数，与业务逻辑解耦 |
+| **`utils/`** | **独立逻辑层** | 存放与 UI 无关的通用处理函数 |
+| ├── `graph_manager.py` | - | 封装线程监控、特定线程清理及全量重置逻辑 |
+| ├── `message_parser.py` | - | 兼容多种消息格式（AI/Human/Tool）的解析器 |
+| └── `formatter.py` | - | 负责将工具调用转化为 Markdown 引用块等特殊样式 |
+| **`LLM/`** | **模型层** | 存放与模型调用相关的内容 |
+| **`graph/`** | **langgraph manager** | langgraph Manager class |
+| **`pages/`** | **pages manager** | langgraph Manager class |
+| `.env` | **配置管理** | 存放 API 密钥、模型地址及端口配置 |
+
+
+### sample 4
+
