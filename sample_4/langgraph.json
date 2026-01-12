@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "my_agent": "./agent.py:app"
+  },
+  "env": ".env",
+  "concurrency_limit": 3
+}
