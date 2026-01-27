@@ -19,7 +19,12 @@ class WritingState(TypedDict, total=False):
     chapters: List[str]
     tools_results: List[str]
     final_content: str
-    next_step: str
+
     # 业务字段
     use_knowledge: bool
     search_results: List[Dict[str, Any]]
+    summary_text: str
+
+    # 状态字段
+    next_step: str
+    last_successful_step: str 

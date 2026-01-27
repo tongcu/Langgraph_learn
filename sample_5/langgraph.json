@@ -1,0 +1,15 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "my_agent": "./agent.py:app"
+  },
+  "checkpointer": {
+    "type": "sqlite",
+    "path": "./checkpoints.db"
+  },
+  "env": {
+    "LANGGRAPH_CLOUD_CHECKPOINTER": "sqlite:///checkpoints.db",
+    "env": ".env"
+  },
+  "concurrency_limit": 3
+}

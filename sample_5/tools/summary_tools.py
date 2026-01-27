@@ -1,4 +1,7 @@
-from langchain_core.tools import tool
+from langchain_core.tools import tool, InjectedToolCallId
+from langgraph.types import Command
+from langchain.messages import ToolMessage
+from typing import Annotated
 from schema.summary_schema import ScienceSchema, ArchSchema, PRDSchema, NewsSchema, GeneralReportSchema, CodeSummary
 # class CodeSummary(BaseModel):
 #     title: str = Field(description="代码标题")
@@ -39,15 +42,23 @@ def summarize_news(data: NewsSchema):
 #     return {"category": "general", "result": data.dict()}
 
 @tool(args_schema=GeneralReportSchema)
-def summarize_general(subject: str, summary: str, key_takeaways: list, suggestions: list):
+def summarize_general(subject: str, summary: str, key_takeaways: list, 
+                      tool_call_id: Annotated[str, InjectedToolCallId]):
     """用于普通商业报告总结。"""
     # 将处理结果格式化为字符串返回给 LLM
     result_text = f"报告主题：{subject}\n核心摘要：{summary}\n关键结论：{', '.join(key_takeaways)}"
     
     # 这里可以独立执行保存逻辑
     # save_to_db(subject, summary) 
-    
-    return result_text # 这个 return 决定了 LLM 下一步能看到什么
+    return Command(
+        update={
+            # update the state keys
+            "summary_text": result_text,
+            # update the message history
+            "messages": [ToolMessage(result_text, tool_call_id=tool_call_id)]
+        }
+    )
+    # return result_text # 这个 return 决定了 LLM 下一步能看到什么
 
 @tool
 def summarize_code(data: CodeSummary):

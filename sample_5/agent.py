@@ -20,7 +20,7 @@ from graph.utils import export_agent_graph
 
 def custom_router(state: State):
     last_message = state["messages"][-1]
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     print(f"custom_router next_action {state.get("next_action", "")}")
     # 逻辑 1: 如果有工具调用，去 "tools"
     if last_message.tool_calls:
@@ -34,11 +34,43 @@ def custom_router(state: State):
     return "call_model_vanilla"
 
 
+def task_coordinator(state: dict):
+    """任务协调器：判断当前该去哪个节点"""
+    logging.info("--- [Task Coordinator] 正在分配任务 ---")
+    
+    topic = state.get("topic")
+    outline = state.get("outline")
+    outline_generated = state.get("outline_generated", False)
+    
+    # 1. 如果连 Topic 都没有，或者正在对话获取 Topic 阶段
+    if not topic:
+        logging.info("状态：未确定主题或大纲，进入规划环节")
+        return Command(goto="plan_node")
+    
+    if not outline_generated:
+        logging.info("状态：未确定主题或大纲，进入规划环节")
+        return Command(goto="plan_node")
+
+    # 2. 如果已经有大纲了，但还没有开始写章节
+    if outline and not state.get("chapters"):
+        logging.info("状态：大纲已就绪，进入正文写作环节")
+        return Command(goto="__end__") # 假设你后续有写作节点
+
+    # 3. 兜底：如果任务都完成了
+    return Command(goto="__end__")
+
 # 2. 定义一个起始路由器
 def start_router(state):
     # 根据 state 里的标记决定去向
-    print(f"start_router next_action {state.get("next_action", "")}")
-    return state.get("next_action", "summary_agent")
+    print(f"start_router summary_text {state.get("summary_text", "unknown")}")
+    summary_text = state.get("summary_text", None)
+    # import pdb; pdb.set_trace()
+    if summary_text == None:
+        print("No next action, going to summary_agent")
+        return "summary_agent"
+    else:
+        print("No next action, going to call_model_vanilla")
+        return "call_model_vanilla"
 
 # 构建图的逻辑
 workflow = StateGraph(State)
@@ -55,6 +87,7 @@ workflow.add_node(
     "summary_agent", 
     summary_agent_node
 )
+
 workflow.add_node("call_model_vanilla", call_model_vanilla)
 workflow.add_node("tools", ToolNode(summary_tools_ex1))
 
