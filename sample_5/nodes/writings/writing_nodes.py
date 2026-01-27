@@ -1,5 +1,5 @@
 from langchain_core.runnables import RunnableConfig
-from langchain_core.messages import AssistantMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 from typing import Optional, Union
@@ -38,7 +38,7 @@ def _parse_json_from_content(content):
     except json.JSONDecodeError as e:
         logging.error(f"解析失败。LLM 返回的内容: {content}")
         raise ValueError(f"无法从 LLM 响应中提取有效的 JSON: {e}")
-        
+
 
 async def outline_node(state, config: RunnableConfig):
     # 1. 提取 configurable 部分（如果不存在则返回空字典）
@@ -97,7 +97,7 @@ async def outline_node(state, config: RunnableConfig):
             logging.warning("未能获取到任何主题(Topic)")
             return {
                 "next_step": "end", # 或者跳转到一个专门的人机交互节点
-                "messages": [AssistantMessage(content="抱歉，我没有找到写作主题，请告诉我想写什么。")]
+                "messages": [AIMessage(content="抱歉，我没有找到写作主题，请告诉我想写什么。")]
             }
 
         prompt = outline_prompt.format(
@@ -129,7 +129,7 @@ async def outline_node(state, config: RunnableConfig):
         return {
             "outline": outline,
             "outline_generated": True,
-            "messages": [AssistantMessage(content=f"大纲生成成功:\n```json\n{json.dumps(outline, ensure_ascii=False, indent=2)}\n```")],
+            "messages": [AIMessage(content=f"大纲生成成功:\n```json\n{json.dumps(outline, ensure_ascii=False, indent=2)}\n```")],
             "last_successful_step": "outline"
         }
 
@@ -146,7 +146,7 @@ class PlanResponse(BaseModel):
     chapter_count: Optional[int] = Field(None, description="建议的章节数量", ge=3, le=10)
     ai_response: str = Field(description="如果是INCOMPLETE，这是追问的话术；如果是COMPLETE，这是确认的话术")
 
-async def plan_node(state: dict, config: RunnableConfig):
+async def plan_node(state, config: RunnableConfig):
     logging.info("--- [Plan Node] 开始规划决策 ---")
     
     # 获取 LLM 并绑定结构化输出
@@ -177,7 +177,7 @@ async def plan_node(state: dict, config: RunnableConfig):
     except Exception as e:
         logging.error(f"结构化模型调用失败: {e}")
         # 极端情况下的手动解析兜底（可选）
-        return {"messages": [AssistantMessage(content="抱歉，我现在规划系统有点忙，请再试一次。")]}
+        return {"messages": [AIMessage(content="抱歉，我现在规划系统有点忙，请再试一次。")]}
 
     # 4. 根据模型决策使用 Command 进行路由
     if plan_result.status == "COMPLETE":
@@ -188,7 +188,7 @@ async def plan_node(state: dict, config: RunnableConfig):
             update={
                 "topic": plan_result.topic,
                 "chapter_count": plan_result.chapter_count,
-                "messages": [AssistantMessage(content=plan_result.ai_response)]
+                "messages": [AIMessage(content=plan_result.ai_response)]
             },
             goto="outline_node"
         )
@@ -197,5 +197,129 @@ async def plan_node(state: dict, config: RunnableConfig):
         # 信息不足，留在当前节点，等待用户在下一轮对话中输入
         logging.info("信息不足，继续对话...")
         return {
-            "messages": [AssistantMessage(content=plan_result.ai_response)]
+            "messages": [AIMessage(content=plan_result.ai_response)]
         }
+
+
+# async def plan_node(state, config: RunnableConfig):
+#     """专门负责根据检索内容进行写作的节点"""
+#     from Workflow.workflow import llm
+#     from Prompts.prompts import writing_prompt
+    
+#     curr_idx = state["current_chapter"]
+#     chapter_info = state["outline"][curr_idx] if curr_idx < len(state["outline"]) else {"title": f"第{curr_idx+1}章", "description": ""}
+    
+#     # 构建 Prompt (保持你原有的逻辑，但更简洁)
+#     prompt = writing_prompt.format(
+#         task=state["task"],
+#         chapter_title=chapter_info["title"],
+#         chapter_description=chapter_info.get("description", ""),
+#         knowledge_content=state.get("knowledge_content", ""),
+#         previous_chapters="\n\n".join(state.get("chapters", []))[-2000:], # 只取最近内容防超长
+#         style_enhancement=state.get("style", "academic"),
+#         word_count=1000, # 示例
+#         unit="字"
+#     )
+
+#     response = llm.invoke(prompt)
+#     content = response.content.strip()
+    
+#     return {
+#         "chapters": [content], # 注意这里是 list，因为使用了 operator.add
+#         "current_chapter": curr_idx + 1,
+#         "messages": [{"role": "assistant", "content": f"第{curr_idx+1}章生成完成"}]
+#     }
+
+async def generate_chapter_node(state, config: RunnableConfig):
+    """手动管理列表的生成节点"""
+    logging.info(f"--- ✍️ 生成第 {state.get('current_chapter', 0) + 1} 章正文 ---")
+    
+    # 1. 基础参数准备
+    curr_idx = state.get("current_chapter", 0)
+    all_chapters = state.get("chapters", [])
+    outline = state.get("outline", [])
+    topic = state.get("topic", [])
+    # state["topic"]
+    chapter_info = outline[curr_idx] if curr_idx < len(outline) else {}
+    
+    chapter_title = chapter_info.get("title", f"第{curr_idx + 1}章")
+    chapter_description = chapter_info.get("description", "")
+    word_count = state.get("word_count", 300)
+    
+    # 1. 提取配置并调用 LLM
+    from Workflow.workflow import get_llm
+    configurable = config.get("configurable", {})
+    llm = get_llm(model_name=configurable.get("model_name"))
+    
+    # 3. 写作风格与格式化
+    from Prompts.prompts import writing_prompt
+    from Prompts.writing_styles import get_style_prompt_enhancement, normalize_style
+    
+    normalized_style = normalize_style(state.get("style", "academic"))
+    style_enhancement = get_style_prompt_enhancement(normalized_style)
+    unit = "字" if any(ord(c) > 127 for c in state.get("task", "")) else "words"
+
+    # 4. 获取上下文（连贯性控制）
+    # 获取之前所有章节的文本，用于保持逻辑一致
+    previous_chapters_text = "\n\n".join(all_chapters[:curr_idx]) if all_chapters else "无前几章内容"
+
+    # 5. 格式化基础 Prompt
+    query = f"请以下面的文字为题写报告：{topic}"
+    try:
+        prompt = writing_prompt.format(
+            task=query,
+            chapter_title=chapter_title,
+            chapter_description=chapter_description,
+            word_count=word_count,
+            unit=unit,
+            style_enhancement=style_enhancement,
+            knowledge_content=state.get("knowledge_content", ""),
+            previous_chapters=previous_chapters_text
+        )
+
+        # # 6. 处理人工反馈 (Human Feedback Loop)
+        # messages = state.get("messages", [])
+        # feedback_applied = False
+        
+        # # 逆序查找最后一条用户消息
+        # for i in range(len(messages) - 1, -1, -1):
+        #     if messages[i].get("role") == "user":
+        #         feedback = messages[i].get("content", "")
+        #         if feedback and "人工反馈" in feedback:
+        #             logging.info(f"应用人工反馈到第 {curr_idx + 1} 章: {feedback}")
+                    
+        #             # 如果是重写逻辑，加入当前章节已有的草稿内容
+        #             if curr_idx < len(all_chapters) and all_chapters[curr_idx]:
+        #                 prompt += f"\n\n## 当前章节草稿:\n{all_chapters[curr_idx]}\n"
+                    
+        #             prompt += f"\n\n【重要指令】:\n{feedback}\n请根据此反馈调整写作。"
+                    
+        #             # 移除已使用的反馈消息（避免污染后续章节）
+        #             messages.pop(i)
+        #             feedback_applied = True
+        #             break
+
+    except KeyError as e:
+        logging.error(f"Prompt 格式化失败: {e}")
+        raise ValueError(f"Missing prompt variable: {e}")
+    
+    # 7. 执行 LLM 生成
+    response = await llm.ainvoke(prompt)
+    content = response.content.strip()
+    # print()
+    logging.info(f"--- 生成第 {state.get('current_chapter', 0) + 1} 章正文 ---\n {content}")
+    
+    # 2. 手动管理列表更新
+    while len(all_chapters) <= curr_idx:
+        all_chapters.append("")
+    
+    # 替换当前章节内容
+    all_chapters[curr_idx] = new_content
+
+    # 3. 返回更新后的完整 State
+    return {
+        "chapters": all_chapters,
+        "current_chapter": curr_idx + 1, # 索引推进
+        "messages": [{"role": "assistant", "content": f"第{curr_idx+1}章生成成功"}],
+        "last_successful_step": "writing"
+    }

@@ -7,8 +7,9 @@ from typing import Annotated, TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
-from nodes.states import WritingState as State
-
+from nodes.states import WritingState #as State
+from nodes.states import Main_state as State
+from nodes.writings.writing_graph import writing_subgraph
 # 导入你独立出来的功能
 from nodes.llm_nodes import call_model_vanilla, summary_agent_node
 
@@ -64,13 +65,25 @@ def start_router(state):
     # 根据 state 里的标记决定去向
     print(f"start_router summary_text {state.get("summary_text", "unknown")}")
     summary_text = state.get("summary_text", None)
+    last_message = state["messages"][-1]
+    # last_message = state.get("messages", None)
     # import pdb; pdb.set_trace()
     if summary_text == None:
         print("No next action, going to summary_agent")
         return "summary_agent"
+    elif last_message.content == "写作":
+        
+        return "writing_subgraph"
     else:
         print("No next action, going to call_model_vanilla")
         return "call_model_vanilla"
+
+async def call_subgraph(state: State):
+    # Transform the state to the subgraph state
+    subgraph_output = writing_subgraph.ainvoke(state)  
+    # Transform response back to the parent state
+    return None
+    # return {"foo": subgraph_output["bar"]}
 
 # 构建图的逻辑
 workflow = StateGraph(State)
@@ -79,7 +92,8 @@ workflow.add_conditional_edges(START,
     start_router, 
     {
         "summary_agent": "summary_agent",
-        "call_model_vanilla": "call_model_vanilla"
+        "call_model_vanilla": "call_model_vanilla",
+        "writing_subgraph":"writing_subgraph"
     }
 )
 
@@ -87,9 +101,10 @@ workflow.add_node(
     "summary_agent", 
     summary_agent_node
 )
-
+workflow.add_node("writing_subgraph", call_subgraph)
 workflow.add_node("call_model_vanilla", call_model_vanilla)
 workflow.add_node("tools", ToolNode(summary_tools_ex1))
+
 
 # workflow.add_edge(START, "summary_agent")
 # workflow.add_conditional_edges("summary_agent", tools_condition)
