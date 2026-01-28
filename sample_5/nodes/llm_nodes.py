@@ -10,7 +10,13 @@ async def call_model_vanilla(state, config: RunnableConfig):
     logging.info("--- call_model_vanilla 正在决策总结策略 ---")
     configurable = config.get("configurable", {})
     m_name = configurable.get("model_name", Default_model_name) 
-    llm = get_llm(model_name=m_name)
+    llm = get_llm(model=m_name)
+
+    print(f"DEBUG: Messages count: {len(state['messages'])}")
+    for i, msg in enumerate(state['messages']):
+        # 只打印前 100 字符，避免刷屏
+        print(f"Msg {i} ({msg.type}): {msg.content[:100]}...")
+        
     # print(state["messages"])
     response = await llm.ainvoke(state["messages"])
     return {"messages": [response]} 
@@ -25,7 +31,7 @@ def call_model_tools(state, config: RunnableConfig):
     m_name = configurable.get("model_name", Default_model_name)
     # import pdb; pdb.set_trace()
     # 获取 LLM 实例并绑定工具
-    llm = get_llm(model_name=m_name)
+    llm = get_llm(model=m_name)
     llm_with_tools = llm.bind_tools(tools)
 
     # 执行
@@ -42,9 +48,10 @@ async def summary_agent_node(state: WritingState, config: RunnableConfig):
     # 获取配置中的模型（通常在 workflow 配置中传入）
     configurable = config.get("configurable", {})
     m_name = configurable.get("model_name", Default_model_name)
+    logging.info(f"model name :{m_name}")
     # import pdb; pdb.set_trace()
     # 获取 LLM 实例并绑定工具
-    llm = get_llm(model_name=m_name)
+    llm = get_llm(model=m_name)
 
     
     # 关键：将所有总结工具绑定到模型上

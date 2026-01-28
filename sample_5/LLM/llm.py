@@ -73,3 +73,5 @@ def get_llm(
     # 存入缓存
     _llm_cache[cache_key] = llm
     return llm
+
+    ## import openai 不支持bind_tools

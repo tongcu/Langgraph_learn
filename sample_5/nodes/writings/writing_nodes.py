@@ -45,7 +45,7 @@ async def outline_node(state, config: RunnableConfig):
     logging.info("--- call_outline_node 大纲生成节点 ---")
     configurable = config.get("configurable", {})
     m_name = configurable.get("model_name", Default_model_name) 
-    llm = get_llm(model_name=m_name)
+    llm = get_llm(model=m_name)
 
     """大纲生成节点"""
     
@@ -152,7 +152,7 @@ async def plan_node(state, config: RunnableConfig):
     # 获取 LLM 并绑定结构化输出
     from Utils.llm_config import get_llm # 假设你的 LLM 获取方法
     m_name = config.get("configurable", {}).get("model_name", "gpt-4o")
-    base_llm = get_llm(model_name=m_name)
+    base_llm = get_llm(model=m_name)
     
     # 核心：使用 with_structured_output 确保输出符合 PlanResponse 类
     structured_llm = base_llm.with_structured_output(PlanResponse)
@@ -249,7 +249,7 @@ async def generate_chapter_node(state, config: RunnableConfig):
     # 1. 提取配置并调用 LLM
     from Workflow.workflow import get_llm
     configurable = config.get("configurable", {})
-    llm = get_llm(model_name=configurable.get("model_name"))
+    llm = get_llm(model=configurable.get("model_name"))
     
     # 3. 写作风格与格式化
     from Prompts.prompts import writing_prompt

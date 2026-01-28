@@ -80,6 +80,7 @@ def start_router(state):
 
 async def call_subgraph(state: State):
     # Transform the state to the subgraph state
+    print("DEbug: 进入子图")
     subgraph_output = writing_subgraph.ainvoke(state)  
     # Transform response back to the parent state
     return None
