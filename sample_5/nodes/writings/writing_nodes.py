@@ -148,9 +148,9 @@ class PlanResponse(BaseModel):
 
 async def plan_node(state, config: RunnableConfig):
     logging.info("--- [Plan Node] 开始规划决策 ---")
-    
+
+
     # 获取 LLM 并绑定结构化输出
-    from Utils.llm_config import get_llm # 假设你的 LLM 获取方法
     m_name = config.get("configurable", {}).get("model_name", "gpt-4o")
     base_llm = get_llm(model=m_name)
     
@@ -247,7 +247,6 @@ async def generate_chapter_node(state, config: RunnableConfig):
     word_count = state.get("word_count", 300)
     
     # 1. 提取配置并调用 LLM
-    from Workflow.workflow import get_llm
     configurable = config.get("configurable", {})
     llm = get_llm(model=configurable.get("model_name"))
     
@@ -314,7 +313,7 @@ async def generate_chapter_node(state, config: RunnableConfig):
         all_chapters.append("")
     
     # 替换当前章节内容
-    all_chapters[curr_idx] = new_content
+    all_chapters[curr_idx] = content
 
     # 3. 返回更新后的完整 State
     return {
