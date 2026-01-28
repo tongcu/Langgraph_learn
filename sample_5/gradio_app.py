@@ -136,7 +136,7 @@ async def predict(message, history, model_selector, task_context, session_id, fi
         },
         "recursion_limit": 50
     }
-
+    yielded_at_least_once = False # 状态标记
     try:
         async for event in client.runs.stream(
             thread_id,
@@ -198,8 +198,11 @@ async def predict(message, history, model_selector, task_context, session_id, fi
             if current_bubble_text and current_bubble_text != last_yielded_content:
                 print(f"DEBUG FRONTEND: role:{role} current_bubble_text\n: ** {current_bubble_text} 的更新")
                 last_yielded_content = current_bubble_text
+                yielded_at_least_once = True
                 yield current_bubble_text
-                    
+        
+        if not yielded_at_least_once:
+            yield "..."
     except Exception as e:
         yield f"❌ 运行异常: {str(e)}"
 
@@ -222,6 +225,11 @@ def main_page():
                 
                 with gr.Accordion("🚨 危险操作", open=False):
                     clear_all_btn = gr.Button("🔥 清空全库线程", variant="stop")
+            
+            # --- 🚀 正确插入位置：实时状态字段内容 ---
+            with gr.Accordion("📊 实时状态字段内容", open=False):
+                field_display_box = gr.Markdown("等待查询...")
+                refresh_fields_btn = gr.Button("🔄 刷新字段内容", size="sm")
 
             file_upload = gr.File(label="参考文档")
             task_context = gr.Textbox(label="分析背景", lines=10)
@@ -241,6 +249,8 @@ def main_page():
                 fill_height=False # 设置为 False 后，height 才会生效
             )
 
+            
+
     # --- 绑定独立出来的功能 ---
     monitor_btn.click(
         fn=graphmanager.monitor_thread_state,
@@ -257,6 +267,12 @@ def main_page():
     clear_all_btn.click(
         fn=graphmanager.clear_all_threads,
         outputs=[status_box]
+    )
+    
+    refresh_fields_btn.click(
+        fn=graphmanager.monitor_specific_fields,
+        inputs=[session_id],
+        outputs=[field_display_box]
     )
                 
 
