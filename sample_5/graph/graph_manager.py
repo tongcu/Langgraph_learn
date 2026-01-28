@@ -63,3 +63,51 @@ class GraphManager:
             return "\n".join(report)
         except Exception as e:
             return f"⚠️ 监控获取失败: {str(e)}"
+
+    async def get_thread_values(self, session_id: str, keys: list = None):
+        """
+        独立功能：获取指定 thread 的 State values 中的特定字段
+        :param session_id: 会话ID
+        :param keys: 想要获取的字段列表，如 ['task', 'files']。如果为 None 则返回全部。
+        """
+        # client = get_client(url=self.api_url)
+        thread_id = name_to_uuid(session_id)
+        
+        try:
+            state = await self.client.threads.get_state(thread_id)
+            if not state or "values" not in state:
+                return None
+            
+            values = state["values"]
+            if keys:
+                # 只保留用户指定的 key
+                return {k: values.get(k) for k in keys if k in values}
+            return values
+        except Exception as e:
+            print(f"Error fetching state values: {e}")
+            return None
+
+    async def monitor_specific_fields(self, session_id: str):
+        """
+        UI 适配功能：获取指定字段并格式化为 Markdown 展示
+        """
+        # 假设你想监控 'task' 和 'files' 字段
+        target_keys = ["task", "chapters"]
+        # data = await self.get_thread_values(session_id, keys=target_keys)
+        data = await self.get_thread_values(session_id)
+        if not data:
+            return " 未找到相关状态数据。"
+        
+        field_display_box = "###  当前 State 关键字段\n"
+        for key, value in data.items():
+            if key == "files":
+                field_display_box += f"** 文件列表**: {value if value else '无'}\n\n"
+            elif key == "task":
+                # 限制显示长度防止撑破 UI
+                display_task = (value[:200] + '...') if isinstance(value, str) and len(value) > 200 else value
+                field_display_box += f"** 分析任务**: \n> {display_task}\n\n"
+            else:
+                field_display_box += f"**🔹 {key}**:\n\n {value}\n\n"
+        
+        return field_display_box
+
