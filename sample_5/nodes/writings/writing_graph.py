@@ -1,7 +1,7 @@
 from langgraph.graph import StateGraph, END, START
 from nodes.states import WritingState 
 from nodes.writings.writing_nodes import outline_node, plan_node, generate_chapter_node
-
+import logging
 # def generate_outline(state: WritingState):
 #     # 根据 topic 生成大纲的逻辑
 #     return {"outline": "Generated Outline..."}
@@ -13,13 +13,15 @@ def writing_router(state: WritingState):
     判断当前完成的章节索引是否小于总章节数
     """
     curr_idx = state.get("current_chapter", 0)
-    total_count = state.get("chapter_count", 0)
+    total_count = state.get("chapter_count", 3)
     
     if curr_idx < total_count:
         # 如果还没写完，返回执行检索的节点名
+        logging.info(f"Continue writing chapter {curr_idx + 1} of {total_count}...")
         return "continue_writing"
     else:
         # 如果写完了，流向结束或保存节点
+        logging.info(f"Finished {curr_idx} of {total_count}...")
         return "finish"
 
 
