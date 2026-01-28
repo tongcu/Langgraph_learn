@@ -81,10 +81,10 @@ def start_router(state):
 async def call_subgraph(state: State):
     # Transform the state to the subgraph state
     print("DEbug: 进入子图")
-    subgraph_output = writing_subgraph.ainvoke(state)  
-    # Transform response back to the parent state
-    return None
-    # return {"foo": subgraph_output["bar"]}
+    subgraph_output = await writing_subgraph.ainvoke(state)
+    print(f"子图输出: {subgraph_output}")
+    # 返回子图的实际输出以更新父图状态
+    return subgraph_output
 
 # 构建图的逻辑
 workflow = StateGraph(State)
