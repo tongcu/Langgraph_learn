@@ -2,12 +2,13 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel, Field
-from typing import Optional, Union
+from typing import Optional, Union, Any, List, Dict
 from LLM.llm import get_llm
 # from tools.client_tool import tools
 import logging
 import re
 import json
+from datetime import datetime
 
 Default_model_name = "local_qwen"
 
@@ -230,6 +231,108 @@ async def plan_node(state, config: RunnableConfig):
 #         "messages": [{"role": "assistant", "content": f"第{curr_idx+1}章生成完成"}]
 #     }
 
+
+async def retrieval_node(state, config: RunnableConfig):
+    """知识检索节点：根据大纲和当前进度从知识库中检索相关内容"""
+    logging.info(f"--- 🔍 [Retrieval Node] 检索第 {state.get('current_chapter', 0) + 1} 章相关知识 ---")
+    
+    # 1. 提取基础参数
+    use_knowledge = state.get("use_knowledge", False)
+    knowledge_base = state.get("knowledge_base")
+    curr_idx = state.get("current_chapter", 0)
+    outline = state.get("outline", [])
+    topic = state.get("topic", "")
+    
+    # 如果不使用知识库或未指定知识库，直接跳过
+    if not use_knowledge or not knowledge_base:
+        logging.info("未使用知识库或未指定知识库，跳过检索环节")
+        return {
+            "knowledge_content": "",
+            "last_successful_step": "retrieval_skipped"
+        }
+
+    # 2. 准备检索信息
+    chapter_info = outline[curr_idx] if curr_idx < len(outline) else {}
+    chapter_title = chapter_info.get("title", f"第{curr_idx + 1}章")
+    chapter_description = chapter_info.get("description", "")
+    
+    # 构造检索查询语句
+    search_query = f"{topic} {chapter_title} {chapter_description}"
+    
+    # 获取检索配置参数（从 state 中获取，或者使用默认值）
+    search_mode = state.get('search_mode', 'vector')
+    search_k = state.get('search_k', 5)
+    score_threshold = state.get('score_threshold', 0.3)
+    
+    try:
+        # 3. 动态导入知识库管理器
+        # 注意：这里假设 KnowledgeManager 文件夹已存在于项目中
+        from KnowledgeManager.KnowledgeManagerFactory import KnowledgeManagerFactory
+        
+        logging.info(f"正在使用知识库 '{knowledge_base}' 进行 {search_mode} 检索...")
+        km = KnowledgeManagerFactory.create_knowledge_manager(knowledge_base_name=knowledge_base)
+        
+        # 根据不同的搜索模式执行检索
+        if search_mode == "bm25":
+            search_result = km.search_bm25(search_query, k=search_k, score_threshold=score_threshold)
+        elif search_mode == "hybrid":
+            vector_weight = state.get('vector_weight', 0.7)
+            keyword_weight = state.get('keyword_weight', 0.3)
+            search_result = km.search_hybrid(
+                search_query, 
+                k=search_k, 
+                vector_weight=vector_weight, 
+                keyword_weight=keyword_weight,
+                score_threshold=score_threshold
+            )
+        else:
+            # 默认使用向量检索
+            search_result = km.search_with_details(search_query, k=search_k, score_threshold=score_threshold)
+        
+        # 4. 处理检索结果
+        # 提取用于写作的上下文文本
+        knowledge_content = search_result.get("context", "")
+        if not knowledge_content and "context_list" in search_result:
+             # 如果 context 字段为空，尝试从列表拼接
+             knowledge_content = "\n".join([r.get("content", "") for r in search_result.get("context_list", [])])
+
+        # 按章节索引保存检索到的背景知识
+        chapter_knowledge = state.get("chapter_knowledge", [])
+        while len(chapter_knowledge) <= curr_idx:
+            chapter_knowledge.append("")
+        chapter_knowledge[curr_idx] = knowledge_content
+
+        # 记录检索历史记录
+        new_result_entry = {
+            "chapter": curr_idx + 1,
+            "title": chapter_title,
+            "results_count": len(search_result.get("context_list", [])),
+            "sources": [r.get("metadata", {}).get("filename", "未知来源") for r in search_result.get("context_list", [])],
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        search_results = state.get("search_results", [])
+        search_results.append(new_result_entry)
+        
+        logging.info(f"检索完成，找到 {new_result_entry['results_count']} 条相关记录")
+        
+        return {
+            "knowledge_content": knowledge_content,
+            "chapter_knowledge": chapter_knowledge,
+            "search_results": search_results,
+            "messages": [AIMessage(content=f"已为第{curr_idx + 1}章检索到相关背景知识。")],
+            "last_successful_step": "retrieval"
+        }
+        
+    except Exception as e:
+        logging.error(f"知识检索过程出错: {str(e)}")
+        # 容错处理：检索失败不中断流程，但清空本章背景知识
+        return {
+            "knowledge_content": "",
+            "messages": [AIMessage(content=f"第{curr_idx + 1}章知识检索失败: {str(e)}，将基于模型自身知识写作。")],
+            "last_successful_step": "retrieval_error"
+        }
+
 async def generate_chapter_node(state, config: RunnableConfig):
     """手动管理列表的生成节点"""
     logging.info(f"--- ✍️ 生成第 {state.get('current_chapter', 0) + 1} 章正文 ---")
@@ -261,6 +364,10 @@ async def generate_chapter_node(state, config: RunnableConfig):
     # 4. 获取上下文（连贯性控制）
     # 获取之前所有章节的文本，用于保持逻辑一致
     previous_chapters_text = "\n\n".join(all_chapters[:curr_idx]) if all_chapters else "无前几章内容"
+    
+    # 获取本章节专门检索到的背景知识
+    chapter_knowledge = state.get("chapter_knowledge", [])
+    current_knowledge = chapter_knowledge[curr_idx] if curr_idx < len(chapter_knowledge) else state.get("knowledge_content", "")
 
     # 5. 格式化基础 Prompt
     query = f"请以下面的文字为题写报告：{topic}"
@@ -272,7 +379,7 @@ async def generate_chapter_node(state, config: RunnableConfig):
             word_count=word_count,
             unit=unit,
             style_enhancement=style_enhancement,
-            knowledge_content=state.get("knowledge_content", ""),
+            knowledge_content=current_knowledge,
             previous_chapters=previous_chapters_text
         )
 
@@ -314,11 +421,110 @@ async def generate_chapter_node(state, config: RunnableConfig):
     
     # 替换当前章节内容
     all_chapters[curr_idx] = content
+    
+    # 3. 保存章节详细信息（题目 + 内容）
+    chapter_details = state.get("chapter_details", [])
+    while len(chapter_details) <= curr_idx:
+        chapter_details.append({"title": "", "content": ""})
+    
+    chapter_details[curr_idx] = {
+        "title": chapter_title,
+        "content": content
+    }
 
-    # 3. 返回更新后的完整 State
+    # 4. 返回更新后的完整 State
     return {
         "chapters": all_chapters,
+        "chapter_details": chapter_details,
         "current_chapter": curr_idx + 1, # 索引推进
         "messages": [{"role": "assistant", "content": f"第{curr_idx+1}章生成成功"}],
         "last_successful_step": "writing"
     }
+
+
+async def merge_article_node(state, config: RunnableConfig):
+    """合并所有章节为完整的 Markdown 文档"""
+    logging.info("--- 📄 合并文章节点 ---")
+    
+    try:
+        # 获取基本信息
+        topic = state.get("topic", "未命名文章")
+        chapter_details = state.get("chapter_details", [])
+        outline = state.get("outline", [])
+        
+        # 如果没有 chapter_details，使用 chapters 和 outline
+        if not chapter_details:
+            chapters = state.get("chapters", [])
+            chapter_details = []
+            for idx, content in enumerate(chapters):
+                if idx < len(outline):
+                    title = outline[idx].get("title", f"第{idx+1}章")
+                else:
+                    title = f"第{idx+1}章"
+                chapter_details.append({"title": title, "content": content})
+        
+        # 构建 Markdown 文档
+        markdown_content = []
+        
+        # 1. 添加文章标题
+        markdown_content.append(f"# {topic}\n")
+        
+        # 2. 添加生成信息
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        markdown_content.append(f"*生成时间: {timestamp}*\n")
+        markdown_content.append(f"*总章节数: {len(chapter_details)}*\n")
+        markdown_content.append("---\n")
+        
+        # 3. 可选：添加目录
+        if len(chapter_details) > 1:
+            markdown_content.append("## 目录\n")
+            for idx, detail in enumerate(chapter_details, 1):
+                title = detail.get("title", f"第{idx}章")
+                # 生成锚点链接（Markdown 格式）
+                anchor = title.replace(" ", "-").lower()
+                markdown_content.append(f"{idx}. [{title}](#{anchor})\n")
+            markdown_content.append("\n---\n")
+        
+        # 4. 添加所有章节内容
+        for idx, detail in enumerate(chapter_details, 1):
+            title = detail.get("title", f"第{idx}章")
+            content = detail.get("content", "")
+            
+            # 章节标题（使用二级标题）
+            markdown_content.append(f"\n## {title}\n")
+            
+            # 章节内容
+            markdown_content.append(f"{content}\n")
+            
+            # 章节分隔符（除了最后一章）
+            if idx < len(chapter_details):
+                markdown_content.append("\n---\n")
+        
+        # 5. 合并所有内容
+        merged_article = "\n".join(markdown_content)
+        
+        logging.info(f"文章合并完成，总长度: {len(merged_article)} 字符")
+        
+        # 6. 可选：保存到文件
+        # import os
+        # output_dir = "output"
+        # os.makedirs(output_dir, exist_ok=True)
+        # filename = f"{output_dir}/{topic.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+        # with open(filename, "w", encoding="utf-8") as f:
+        #     f.write(merged_article)
+        # logging.info(f"文章已保存到: {filename}")
+        
+        return {
+            "merged_article": merged_article,
+            "final_content": merged_article,  # 兼容旧字段
+            "messages": [{"role": "assistant", "content": f"文章合并完成，共 {len(chapter_details)} 章节"}],
+            "last_successful_step": "merge"
+        }
+    
+    except Exception as e:
+        logging.error(f"合并文章失败: {str(e)}")
+        return {
+            "messages": [{"role": "assistant", "content": f"合并文章时出错: {str(e)}"}],
+            "last_successful_step": "merge_error"
+        }
