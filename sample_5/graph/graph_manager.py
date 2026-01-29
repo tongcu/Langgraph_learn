@@ -109,5 +109,6 @@ class GraphManager:
             else:
                 field_display_box += f"**🔹 {key}**:\n\n {value}\n\n"
         
-        return field_display_box
+        # return field_display_box
+        return data # 前端通过json格式展示
 
