@@ -12,10 +12,10 @@ async def call_model_vanilla(state, config: RunnableConfig):
     m_name = configurable.get("model_name", Default_model_name) 
     llm = get_llm(model=m_name)
 
-    print(f"DEBUG: Messages count: {len(state['messages'])}")
-    for i, msg in enumerate(state['messages']):
-        # 只打印前 100 字符，避免刷屏
-        print(f"Msg {i} ({msg.type}): {msg.content[:100]}...")
+    # print(f"DEBUG: Messages count: {len(state['messages'])}")
+    # for i, msg in enumerate(state['messages']):
+    #     # 只打印前 100 字符，避免刷屏
+    #     print(f"Msg {i} ({msg.type}): {msg.content[:100]}...")
         
     # print(state["messages"])
     response = await llm.ainvoke(state["messages"])

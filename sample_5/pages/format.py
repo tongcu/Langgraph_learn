@@ -1,3 +1,21 @@
+import re
+
+def format_ai_response(text: str) -> str:
+    """
+    格式化 AI 回复：处理思考过程标签，转换为 HTML 折叠框。
+    """
+    if not text: return ""
+    
+    pattern = r'<(?:think|thought)>(.*?)</(?:think|thought)>'
+    match = re.search(pattern, text, flags=re.DOTALL)
+    
+    if match:
+        thought_content = match.group(1).strip()
+        answer_content = re.sub(pattern, '', text, flags=re.DOTALL).strip()
+        return f"<details><summary>思考过程 (点击展开)</summary>\n\n{thought_content}\n\n</details>\n\n{answer_content}"
+    
+    return text
+
 def format_tool_call_simple(name, args):
     """用简单的 Markdown 引用块区分工具"""
     # 提取参数 key-value
@@ -7,7 +25,7 @@ def format_tool_call_simple(name, args):
         arg_details += f"\n> - **{k}**: {val}"
 
     return (
-        f"#### 🛠️ 正在调用分析工具\n"
+        f"#### 正在调用分析工具\n"
         f"> **工具名称**: `{name}`"
         f"{arg_details}\n"
         f"---\n" # 分割线
@@ -60,7 +78,11 @@ def format_to_gradio_messages(messages):
         # 处理工具调用显示
         display_content = content
         if tool_calls:
-            display_content = f"🛠️ [工具调用]: {tool_calls[0]['name']}\n{content or ''}"
+            display_content = f"[工具调用]: {tool_calls[0]['name']}\n{content or ''}"
+        
+        # 应用 AI 回复格式化（如思考过程折叠）
+        if gradio_role == "assistant":
+            display_content = format_ai_response(display_content)
             
         formatted_history.append({
             "role": gradio_role,

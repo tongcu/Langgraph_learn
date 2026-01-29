@@ -19,6 +19,7 @@ from Utils.id import name_to_uuid_nr as name_to_uuid
 
 from pages.format import format_tool_call_simple
 from pages import render_admin_page
+from pages.results_page import render_results_page
 from config import settings
 API_URL = settings.API_URL
 # 初始化管理器
@@ -41,7 +42,8 @@ def format_ai_response(text: str) -> str:
         thought_content = match.group(1).strip()
         # 移除正文中的 think 部分
         answer_content = re.sub(pattern, '', text, flags=re.DOTALL).strip()
-        return f"<details><summary><b> 思考过程 (点击展开)</b></summary>\n\n{thought_content}\n\n</details>\n\n{answer_content}"
+        # 使用 HTML details 标签实现 Chatbot 内的折叠
+        return f"<details><summary>思考过程 (点击展开)</summary>\n\n{thought_content}\n\n</details>\n\n{answer_content}"
     
     return text
 
@@ -58,21 +60,21 @@ async def get_thread_status(session_id):
         state = await client.threads.get_state(thread_id)
         
         if not state or not state.get("next"):
-            return "✅ 当前没有正在运行或等待的任务。"
+            return "当前没有正在运行或等待的任务。"
         
         # next 字段包含了即将执行或正在执行的节点名称
         current_nodes = state["next"]
         values = state.get("values", {})
         
-        status_report = f" **当前停滞位置**: {current_nodes}\n"
-        status_report += f" **消息总数**: {len(values.get('messages', []))} 条\n"
+        status_report = f" 当前停滞位置: {current_nodes}\n"
+        status_report += f" 消息总数: {len(values.get('messages', []))} 条\n"
         
         if "task" in values:
-            status_report += f" **上下文状态**: 已加载 (长度: {len(values['task'])})\n"
+            status_report += f" 上下文状态: 已加载 (长度: {len(values['task'])})\n"
             
         return status_report
     except Exception as e:
-        return f"❌ 无法获取状态: {str(e)}"
+        return f"无法获取状态: {str(e)}"
 
     
 def extract_message_info(msg):
@@ -204,7 +206,7 @@ async def predict(message, history, model_selector, task_context, session_id, fi
         if not yielded_at_least_once:
             yield "..."
     except Exception as e:
-        yield f"❌ 运行异常: {str(e)}"
+        yield f"运行异常: {str(e)}"
 
 def main_page():
         
@@ -216,20 +218,22 @@ def main_page():
             session_id = gr.Textbox(label="会话 ID", value="user_session_01")
             
             # --- UI 中显示管理功能 ---
-            with gr.Accordion("🛠️ 线程高级管理", open=True):
+            with gr.Accordion("线程高级管理", open=True):
                 with gr.Row():
-                    monitor_btn = gr.Button("🔍 监控状态", size="sm")
-                    clear_this_btn = gr.Button("🗑️ 清理当前", size="sm")
+                    monitor_btn = gr.Button("监控状态", size="sm")
+                    clear_this_btn = gr.Button("清理当前", size="sm")
                 
-                status_box = gr.Markdown("🟢 等待指令")
+                status_box = gr.Markdown("等待指令")
                 
-                with gr.Accordion("🚨 危险操作", open=False):
-                    clear_all_btn = gr.Button("🔥 清空全库线程", variant="stop")
+                with gr.Accordion("危险操作", open=False):
+                    clear_all_btn = gr.Button("清空全库线程", variant="stop")
             
             # --- 🚀 正确插入位置：实时状态字段内容 ---
-            with gr.Accordion("📊 实时状态字段内容", open=False):
-                field_display_box = gr.Markdown("等待查询...")
-                refresh_fields_btn = gr.Button("🔄 刷新字段内容", size="sm")
+            with gr.Accordion("实时状态字段内容", open=False):
+                refresh_fields_btn = gr.Button("刷新字段内容", size="sm")
+                # field_display_box = gr.Markdown("等待查询...")
+                field_display_box = gr.JSON(label="State 原始数据")
+                
 
             file_upload = gr.File(label="参考文档")
             task_context = gr.Textbox(label="分析背景", lines=10)
@@ -274,18 +278,25 @@ def main_page():
         inputs=[session_id],
         outputs=[field_display_box]
     )
+    
+    return session_id
                 
 
 def create_ui():
     with gr.Blocks(theme=gr.themes.Soft(), title="LangGraph 分析专家") as demo:
-        gr.Markdown("# 📑 AI 深度报告分析助手")
+        gr.Markdown("# AI 深度报告分析助手")
         
         with gr.Tabs() as tabs:
             # --- Tab 1: 用户对话区 ---
-            with gr.TabItem("“总结对话窗口", id=0):
-                main_page()
-            # --- Tab 2: 后端管理区 ---
-            with gr.TabItem(" 库管理与监视", id=1):
+            with gr.TabItem("总结对话窗口", id=0):
+                sess_id = main_page()
+            
+            # --- Tab 2: 生成结果展示 ---
+            with gr.TabItem("生成结果展示", id=2):
+                render_results_page(graphmanager, sess_id)
+
+            # --- Tab 3: 后端管理区 ---
+            with gr.TabItem("库管理与监视", id=1):
                 # 调用独立函数，传入管理器实例
                 render_admin_page(graphmanager)
 
