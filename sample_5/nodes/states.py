@@ -26,12 +26,22 @@ class WritingState(TypedDict, total=False):
 
     # 业务字段
     use_knowledge: bool
+    knowledge_content: str
+    chapter_knowledge: List[str]
+    knowledge_base: str
+    search_mode: str
+    search_k: int
+    score_threshold: float
+    vector_weight: float
+    keyword_weight: float
 
     chapters: List[str] 
+    chapter_details: List[Dict[str, str]]  # 存储章节详细信息：title 和 content
     search_results: List[Dict[str, Any]]
     outline: List[Dict[str, str]]
     # search_results: List[Dict[str, Any]]
     summary_text: str
+    merged_article: str  # 合并后的完整文章（Markdown格式）
 
 
     # 状态字段
@@ -48,15 +58,25 @@ class Main_state(TypedDict, total=False):
     outline_generated: bool
     current_chapter: int
     chapter_count: int
-    chapters: List[str]
+    chapter_details: List[Dict[str, str]]  # 存储章节详细信息：title 和 content
     tools_results: List[str]
     final_content: str
     topic: str
 
     # 业务字段
     use_knowledge: bool
+    knowledge_content: str
+    chapter_knowledge: List[str]
+    knowledge_base: str
+    search_mode: str
+    search_k: int
+    score_threshold: float
+    vector_weight: float
+    keyword_weight: float
     search_results: List[Dict[str, Any]]
     summary_text: str
+    merged_article: str  # 合并后的完整文章（Markdown格式）
+
 
     chapters: List[str] 
     search_results: List[Dict[str, Any]]
