@@ -130,3 +130,6 @@ app = workflow.compile(
 )
 graph_filename="agent_graph.png"
 export_agent_graph(app, graph_filename)
+
+writing_subgraph_filename="writing_subgraph.png"
+export_agent_graph(writing_subgraph, writing_subgraph_filename)
