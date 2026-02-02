@@ -18,7 +18,7 @@ from Utils.id import name_to_uuid_nr as name_to_uuid
 
 
 from pages.format import format_tool_call_simple
-from pages import render_admin_page
+from pages import render_admin_page, render_knowledge_page
 from pages.results_page import render_results_page
 from config import settings
 API_URL = settings.API_URL
@@ -108,7 +108,7 @@ def extract_message_info(msg):
     return role, content, tool_calls
 
 # --- 2. 重构后的核心预测逻辑 ---
-async def predict(message, history, model_selector, task_context, session_id, file_obj):
+async def predict(message, history, model_selector, task_context, session_id, file_obj, knowledge_base):
     client = get_client(url=API_URL)
     thread_id = name_to_uuid(session_id)
     # import pdb 
@@ -126,6 +126,10 @@ async def predict(message, history, model_selector, task_context, session_id, fi
         "messages": [{"role": "user", "content": message}],
         "task_id" : session_id
     }
+    
+    # 添加知识库配置
+    if knowledge_base:
+        input_state["knowledge_base"] = knowledge_base
     
     if file_obj is not None:
         input_state["files"] = [file_obj.name]
@@ -237,6 +241,15 @@ def main_page():
 
             file_upload = gr.File(label="参考文档")
             task_context = gr.Textbox(label="分析背景", lines=10)
+            # 知识库选择下拉框
+            from KnowledgeManager.FAISSKnowledgeManager import FAISSKnowledgeManager
+            kb_list = FAISSKnowledgeManager.list_knowledge_bases()
+            knowledge_base_selector = gr.Dropdown(
+                label="知识库选择", 
+                choices=kb_list,
+                value=kb_list[0] if kb_list else None,
+                allow_custom_value=True
+            )
 
         with gr.Column(scale=2):
             # 模型参数提取
@@ -248,7 +261,7 @@ def main_page():
             )
             chat = gr.ChatInterface(
                 fn=predict,
-                additional_inputs=[model_selector,task_context, session_id, file_upload],
+                additional_inputs=[model_selector,task_context, session_id, file_upload, knowledge_base_selector],
                 chatbot=gr.Chatbot(height=700, label="分析对话流"), 
                 fill_height=False # 设置为 False 后，height 才会生效
             )
@@ -283,7 +296,7 @@ def main_page():
                 
 
 def create_ui():
-    with gr.Blocks(theme=gr.themes.Soft(), title="LangGraph 分析专家") as demo:
+    with gr.Blocks(title="LangGraph 分析专家") as demo:
         gr.Markdown("# AI 深度报告分析助手")
         
         with gr.Tabs() as tabs:
@@ -295,7 +308,11 @@ def create_ui():
             with gr.TabItem("生成结果展示", id=2):
                 render_results_page(graphmanager, sess_id)
 
-            # --- Tab 3: 后端管理区 ---
+            # --- Tab 3: 知识库管理区 ---
+            with gr.TabItem("知识库管理", id=3):
+                render_knowledge_page()
+
+            # --- Tab 4: 后端管理区 ---
             with gr.TabItem("库管理与监视", id=1):
                 # 调用独立函数，传入管理器实例
                 render_admin_page(graphmanager)
@@ -306,6 +323,7 @@ if __name__ == "__main__":
     # 启动 Gradio
     ui = create_ui()
     ui.launch(
+        theme=gr.themes.Soft(),
         server_name="0.0.0.0",
         server_port=7860,
     )
