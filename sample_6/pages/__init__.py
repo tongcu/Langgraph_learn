@@ -1,0 +1,2 @@
+from .admin_page import render_admin_page
+from .knowledge_page import render_knowledge_page
